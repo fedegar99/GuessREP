@@ -1,0 +1,48 @@
+
+
+version: "3.8"
+services:
+  db:
+    image: postgres
+    container_name: local_postgresdb
+    restart: always
+    ports:
+      - "54320:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+    volumes:
+      - ./sql/NewDb.sql:/docker-entrypoint-initdb.d/create_tables.sql
+      - ./sql/NewQueries.sql:/docker-entrypoint-initdb.d/fill_tables.sql
+      - local_pgdata:/var/lib/postgresql/data
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    restart: always
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: lso@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"
+    depends_on:
+      - db
+    # volumes:
+    #   - ./src:/app/src
+    #   - ./header:/app/header
+    # command: gcc -o /app/myprogram ../Codice/__Final__/src/serverTest.c ../Codice/__Final__/src/database.c ../Codice/__Final__/src/strutture.c ../Codice/__Final__/src/word.c ../Codice/__Final__/src/gamemanager.c ../Codice/__Final__/src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq
+    # command: gcc -o  /app/myprogram src/main.c src/database.c src/strutture.c src/word.c src/gamemanager.c src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq && /app/myprogram
+    # RUN: ./myprogram
+
+    # -I/usr/include/json-c -L/usr/lib -ljson-c
+volumes:
+  local_pgdata:
+  pgadmin-data:
