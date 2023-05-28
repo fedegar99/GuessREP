@@ -52,6 +52,10 @@ void *handle2_client(void *par_) {
         printf("Received message from client: %s\n", buffer);
 
         struct json_object *js = json_tokener_parse(buffer);
+        if(strcmp(json_object_to_json_string(js),"")){
+            printf("ERRORE RICEVUTA STRINGA VUOTA");
+            break;
+        }
         const char *operation = json_object_get_string(json_object_object_get(js, "operation"));
         struct json_object *json = json_object_new_object();
 
