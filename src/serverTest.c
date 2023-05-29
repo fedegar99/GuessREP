@@ -260,7 +260,7 @@ int main(int argc, char *argv[]) {
             int addrlen = sizeof(address);
             pthread_t thread_id;
             thread_par par;
-            par.conn = PQconnectdb("postgresql://user:admin@local_postgresdb:54320/postgres"); //sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' container_name
+            par.conn = PQconnectdb("postgresql://user:admin@localhost:5432/postgres"); //sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' container_name
             checkConnectionToDb(par.conn);
 
             if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
