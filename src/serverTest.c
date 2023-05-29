@@ -4,6 +4,7 @@
 #include "../header/gameManager.h"
 // sudo apt install libjson-c-dev
 #include <json-c/json.h>
+#include <sys/wait.h>
 
 void checkConnectionToDb(PGconn *conn){
 	if (PQstatus(conn) == CONNECTION_BAD) {
@@ -44,7 +45,7 @@ void *handle2_client(void *par_) {
     while (1) {
         visualizza_stanze();
 
-        if ((read(socket, buffer, 2048)) == 0) {
+        if ((read(socket, buffer, 2048)) < 1) {
             printf("Client disconnected.\n");
             break;
         }
@@ -52,10 +53,6 @@ void *handle2_client(void *par_) {
         printf("Received message from client: %s\n", buffer);
 
         struct json_object *js = json_tokener_parse(buffer);
-        if(strcmp(json_object_to_json_string(js),"")){
-            printf("ERRORE RICEVUTA STRINGA VUOTA");
-            break;
-        }
         const char *operation = json_object_get_string(json_object_object_get(js, "operation"));
         struct json_object *json = json_object_new_object();
 
@@ -183,9 +180,12 @@ void *handle2_client(void *par_) {
                 email = start_room(get_stanza_by_id(utenteLoggato->idStanza), 2);
             }
             //Fine del gioco
-            rm_stanza_by_id(utenteLoggato->idStanza);
-            strcpy(winnerEmail, email);
-            updateUserPartiteVinte(conn, winnerEmail);
+            if(email != NULL) {
+                strcpy(winnerEmail, email);
+                updateUserPartiteVinte(conn, winnerEmail);
+            }
+            rm_stanza(currentRoom);
+            currentRoom = NULL;
         }
         else if(strcmp(operation, "updateLobby") == 0){
             struct json_object * jsonArray = json_object_new_array();
@@ -217,10 +217,11 @@ void *handle2_client(void *par_) {
             //wait_until_ready(stanzaAttuale,utenteLoggato);
             //{isAdminExited: true} oppure { usersInLobby[{username: user1}, {username: user2}...], isGameStarted: true/false }
 
-            if(!isAdminExited && stanzaAttuale->started) {
+            if(stanzaAttuale != NULL && !isAdminExited && stanzaAttuale->started) {
                 signal(SIGUSR1, thread_unlock);
                 pause();
                 printf("tread unlocked for %s\n", utenteLoggato->username);
+                stanzaAttuale = NULL;
             }
         }
 
@@ -236,55 +237,76 @@ void *handle2_client(void *par_) {
 }
 
 int main(int argc, char *argv[]) {
-    pthread_mutex_init(&mutex, NULL);
-    int server_fd;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
-    pthread_t thread_id;
-    thread_par par;
-    par.conn = PQconnectdb("postgresql://user:admin@localhost:54320/postgres"); //sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' container_name
-	checkConnectionToDb(par.conn);
 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
+    int status, pid;
 
-    //CODICE FEDE consente al socket di riutilizzare l'indirizzo e la porta
-    int reuse = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        perror("Errore durante l'impostazione dell'opzione SO_REUSEADDR");
-        exit(1);
-    }
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    //address.sin_addr.s_addr = inet_addr("127.0.0.1");
-    address.sin_port = htons(PORT);
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(server_fd, MAX_CLIENTS) < 0) {
-        perror("listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Server started listening on port %d...\n", PORT);
-
-    while (1) {
-        if ((par.new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-            perror("accept failed");
-            exit(EXIT_FAILURE);
+    do {
+        pid = fork();
+        if(pid > 0) {
+            waitpid(pid, &status, 0);
+            if (WIFSIGNALED(status)) {
+                printf("Server down - ERROR %d\n", status);
+                // It was terminated by a signal
+                if (WTERMSIG(status) == SIGSEGV) {
+                    printf("SEG FAULT\n");
+                }
+            }
+            printf("Restarting server...\n");
         }
+        else {
+            pthread_mutex_init(&mutex, NULL);
+            int server_fd;
+            struct sockaddr_in address;
+            int addrlen = sizeof(address);
+            pthread_t thread_id;
+            thread_par par;
+            par.conn = PQconnectdb("postgresql://user:admin@local_postgresdb:54320/postgres"); //sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' container_name
+            checkConnectionToDb(par.conn);
 
-        if (pthread_create(&thread_id, NULL, handle2_client, (void *)&par) < 0) {
-            perror("pthread_create failed");
-            exit(EXIT_FAILURE);
+            if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+                perror("socket failed");
+                exit(EXIT_FAILURE);
+            }
+
+            //CODICE FEDE consente al socket di riutilizzare l'indirizzo e la porta
+            int reuse = 1;
+            if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+                perror("Errore durante l'impostazione dell'opzione SO_REUSEADDR");
+                exit(1);
+            }
+
+            address.sin_family = AF_INET;
+            address.sin_addr.s_addr = INADDR_ANY;
+            //address.sin_addr.s_addr = inet_addr("127.0.0.1");
+            address.sin_port = htons(PORT);
+
+            if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+                perror("bind failed");
+                exit(EXIT_FAILURE);
+            }
+
+            if (listen(server_fd, MAX_CLIENTS) < 0) {
+                perror("listen failed");
+                exit(EXIT_FAILURE);
+            }
+
+            printf("Server started listening on port %d...\n", PORT);
+
+            while (1) {
+                if ((par.new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+                    perror("accept failed");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (pthread_create(&thread_id, NULL, handle2_client, (void *)&par) < 0) {
+                    perror("pthread_create failed");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            pthread_mutex_destroy(&mutex);
+            exit(EXIT_SUCCESS);
         }
-    }
-    pthread_mutex_destroy(&mutex);
-    return 0;
+    } while(1);
 }
+
+

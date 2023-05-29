@@ -73,4 +73,6 @@ int rm_user_from_room_by_username(char username[32], stanza *room );
 void delete_utente_from_connected_room(utente * user);
 void wait_until_ready(stanza * room, utente * user);
 
+int getActualPlayes(stanza *room);
+
 #endif

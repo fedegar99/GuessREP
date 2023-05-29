@@ -131,16 +131,16 @@ int rm_user_from_room(utente *user, stanza *room ){
 	return rm_user_from_room_by_username(user->username, room);
 }
 
-//rimuovi utente !!!!!CONFRONTA I PUNTATORI!!!!!
+//rimuovi utente !!!!!CONFRONTA GLI USERNAME!!!!
 int rm_user_from_room_by_username(char username[32], stanza *room ){
 	if(room == NULL){
 		return true;
 	}
 	bool success = false;
-	// strcmp non worka strcmp(room->adminUser->username,user->username)
-	if(room->adminUser->username == username){
+	if((strcmp(room->adminUser->username, username) == 0) && !room->started){
 		success = rm_stanza(room);
-	} else {
+	}
+	else {
 		for (int i = 0; i < room->numeroMaxGiocatori; i++){
 			if(room->players[i] != NULL){
 				if(strcmp(room->players[i]->username, username) == 0){
@@ -150,6 +150,9 @@ int rm_user_from_room_by_username(char username[32], stanza *room ){
 					break;
 				}
 			}
+		}
+		if(getActualPlayes(room) == 0) {
+			success = rm_stanza(room);
 		}
 	}
 	return success;
@@ -281,6 +284,19 @@ void wait_until_ready(stanza * room, utente * user){
 		}
 	}
 	
+}
+
+int getActualPlayes(stanza *room) {
+	int i, n = 0;
+	if(room == NULL){
+		return -1;
+	}
+	for(i = 0; i < room->numeroMaxGiocatori; i++) {
+		if(room->players[i] != NULL) {
+			n++;
+		}	
+	}
+	return n;
 }
 
 #endif

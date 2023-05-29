@@ -2,7 +2,7 @@
 #define GAMEMANAGER_C
 
 #include "../header/gameManager.h"
-#define ADMIN_ERROR -1
+#define ABORT_ERROR -1
 #define USER_ERROR -2
 
 char* start_room(stanza* currentRoom, int targetScore) {
@@ -11,60 +11,45 @@ char* start_room(stanza* currentRoom, int targetScore) {
     int *score = (int*)calloc(currentRoom->numeroMaxGiocatori, sizeof(int));
     int winnerIndex = -1;
     char *winnerEmail;
+    int word_error;
 
-    printf("Game started in %s\nGiocatori:\n", currentRoom->nomeStanza);
+    printf("Game started in %s\n", currentRoom->nomeStanza);
+    /*
     for(i=0; i<currentRoom->numeroMaxGiocatori; i++) {
         if(currentRoom->players[i] != NULL)
             printf("%s\n", currentRoom->players[i]->username);
     }
-
-    //Set connection time-out per le socket
-    for(i = 0; i < currentRoom->numeroMaxGiocatori; i++) {
-        if(currentRoom->players[i] == NULL)
-            continue;
-        struct timeval tv;
-        tv.tv_sec = 45;
-        tv.tv_usec = 0;
-        setsockopt(currentRoom->players[i]->clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    }
+    */
 
     i=0;
     do
     {
-        if(currentRoom->players[i] == NULL){
-            i = ++i % currentRoom->numeroMaxGiocatori;
-            continue;
-            //forse sbagliato?
+        word_error = false;
+        if(currentRoom->players[i] != NULL) {
+            sendBroadcast(currentRoom, i, "WAIT");
+            send(currentRoom->players[i]->clientSocket, "CHOOSE", 7, 0);
+            if(recv(currentRoom->players[i]->clientSocket, response, BUFFDIM, 0) < 0) {
+                strcpy(response, "ERROR");
+                word_error = true;
+            }
+            printf("HOST RESPONSE %s\n", response);
+            //printf("Host id: %d\n", i);
+            winnerIndex = start_round(currentRoom, i, word_error);
+            if(getActualPlayes(currentRoom) < 2)
+                break;
+            if(winnerIndex == ABORT_ERROR)
+                return NULL;
+            else if(winnerIndex != USER_ERROR)
+                score[winnerIndex]++;
         }
-        sendBroadcast(currentRoom, i, "WAIT");
-        send(currentRoom->players[i]->clientSocket, "CHOOSE", 7, 0);
-        recv(currentRoom->players[i]->clientSocket, response, BUFFDIM, 0);
-        printf("HOST RESPONSE %s\n", response);
-        //printf("Host id: %d\n", i);
-        winnerIndex = start_round(currentRoom, i);
-        if(winnerIndex != ADMIN_ERROR)
-            score[winnerIndex]++;
-        else
-            return NULL;  
         i = ++i % currentRoom->numeroMaxGiocatori;
     } while(score[winnerIndex] < targetScore);
     sendBroadcast(currentRoom, -1, "END");
 
     //Sblocca thread degli altri utenti
     for(i = 0; i < currentRoom->numeroMaxGiocatori; i++) {
-        if(currentRoom->players[i] == NULL)
-            continue;
-        pthread_kill(currentRoom->players[i]->tid, SIGUSR1);
-    }
-
-    //Ripristina connection time-out per le socket
-    for(i = 0; i < currentRoom->numeroMaxGiocatori; i++) {
-        if(currentRoom->players[i] == NULL)
-            continue;
-        struct timeval tv;
-        tv.tv_sec = 3600;
-        tv.tv_usec = 0;
-        setsockopt(currentRoom->players[i]->clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+        if(currentRoom->players[i] != NULL)
+            pthread_kill(currentRoom->players[i]->tid, SIGUSR1);
     }
 
     //Restituice il vincitore
@@ -72,7 +57,7 @@ char* start_room(stanza* currentRoom, int targetScore) {
     return winnerEmail;
 }
 
-int start_round(stanza *room, int idHostPlayer) {
+int start_round(stanza *room, int idHostPlayer, bool word_error) {
     int i = 0, j = 0;
     char choosenWord[32];
     char buffer[BUFFDIM] = {0};
@@ -84,12 +69,10 @@ int start_round(stanza *room, int idHostPlayer) {
     generateSuggestedWords(NUMBER_OF_SUGGESTED_WORD, parole);
     prepareWords(buffer, parole);
     //printf("%s", buffer);
-    send(room->players[idHostPlayer]->clientSocket, buffer, strlen(buffer), 0); //Invio delle parole suggerite
-    memset(buffer, 0, sizeof(buffer));
-    recv(room->players[idHostPlayer]->clientSocket, buffer, 32, 0 ); //In attesa di ricevere la parola scelta
-    if(buffer[0] == 0) {
-        printf("Connection error\n");
-        return ADMIN_ERROR;
+    if(!word_error) {
+        send(room->players[idHostPlayer]->clientSocket, buffer, strlen(buffer), 0); //Invio delle parole suggerite
+        memset(buffer, 0, sizeof(buffer));
+        recv(room->players[idHostPlayer]->clientSocket, buffer, 32, 0 ); //In attesa di ricevere la parola scelta
     }
     while(strcmp(parole[choosenWordIndex][0], buffer) != 0){ //Estrazione dell'indice della parola scelta dalla matrice
         choosenWordIndex++;
@@ -103,6 +86,16 @@ int start_round(stanza *room, int idHostPlayer) {
     json_object_object_add(jsObj, "definition", json_object_new_string(parole[choosenWordIndex][1]));
     sendBroadcast(room, idHostPlayer, (char*) json_object_to_json_string(jsObj));
 
+    //Set connection time-out per le socket
+    for(i = 0; i < room->numeroMaxGiocatori; i++) {
+        if(room->players[i] == NULL)
+            continue;
+        struct timeval tv;
+        tv.tv_sec = 45;
+        tv.tv_usec = 0;
+        setsockopt(room->players[i]->clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    }
+
     //Svolgimento del round
     int guessed = 0;
     int *hints = (int*)calloc(strlen(choosenWord), sizeof(int));
@@ -113,11 +106,12 @@ int start_round(stanza *room, int idHostPlayer) {
             else {
                 send(room->players[i]->clientSocket, "YOUR_TURN", 10, 0);
                 memset(buffer, 0, sizeof(buffer));
-                recv(room->players[i]->clientSocket, buffer, BUFFDIM, 0); //In attesa del tentativo
-                if(buffer[0] == 0) {
+                if(recv(room->players[i]->clientSocket, buffer, BUFFDIM, 0) < 0) { //In attesa del tentativo
                     printf("Connection error\n");
+                    strcat(buffer, "{\"guessed\" : false, \"playerName\" : \"");
+                    strcat(buffer, room->players[i]->username);
+                    strcat(buffer, "\", \"word\" : \"\"}");
                     rm_user_from_room(room->players[i], room);
-                    return USER_ERROR;
                 }
                 printf("%s\n", buffer);
                 sendBroadcast(room, i, buffer);
@@ -146,8 +140,21 @@ int start_round(stanza *room, int idHostPlayer) {
     } while(winnerIndex == -1);
     free(hints);
     free(jsObj);
-    printf("%s ha indovinato la parola\n", room->players[winnerIndex]->username);
-    return winnerIndex;
+
+    //Ripristina connection time-out per le socket
+    for(i = 0; i < room->numeroMaxGiocatori; i++) {
+        if(room->players[i] == NULL)
+            continue;
+        struct timeval tv;
+        tv.tv_sec = 3600;
+        tv.tv_usec = 0;
+        setsockopt(room->players[i]->clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    }
+
+    if(room->players[winnerIndex] != NULL)
+        return winnerIndex;
+    else
+        return USER_ERROR;
 }
 
 void sendBroadcast(stanza* room, int idHost, char* msg) {
@@ -160,7 +167,10 @@ void sendBroadcast(stanza* room, int idHost, char* msg) {
         else {
             send(room->players[i]->clientSocket, msg, strlen(msg), 0);
             printf("waiting response from sock %d ... ", room->players[i]->clientSocket);
-            recv(room->players[i]->clientSocket, response, BUFFDIM, 0);
+            if(recv(room->players[i]->clientSocket, response, BUFFDIM, 0) < 0) {
+                rm_user_from_room(room->players[i], room);
+                strcpy(response, "ERROR");
+            }
             printf("%s\n", response);
         }   
     }
