@@ -2,6 +2,7 @@ FROM gcc:latest
 
 COPY src /app/src
 COPY header /app/header
+COPY avatars /app/avatars
 
 WORKDIR /app
 
