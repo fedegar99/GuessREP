@@ -40,7 +40,7 @@ services:
     #   - ./header:/app/header
     # command: gcc -o /app/myprogram ../Codice/__Final__/src/serverTest.c ../Codice/__Final__/src/database.c ../Codice/__Final__/src/strutture.c ../Codice/__Final__/src/word.c ../Codice/__Final__/src/gamemanager.c ../Codice/__Final__/src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq
     # command: gcc -o myprogram src/main.c src/database.c src/strutture.c src/word.c src/gamemanager.c src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq
-    command: gcc -o myprogram app/src/main.c app/src/database.c app/src/strutture.c app/src/word.c app/src/gamemanager.c app/src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq
+    # command: gcc -o myprogram app/src/main.c app/src/database.c app/src/strutture.c app/src/word.c app/src/gamemanager.c app/src/base64.c -ljson-c -pthread -g -I/usr/include/postgresql -lpq
     # RUN: ./myprogram
 
     # -I/usr/include/json-c -L/usr/lib -ljson-c
