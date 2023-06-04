@@ -26,13 +26,13 @@ utente *new_utente(char *name, char *pass, char *em, int wongames, int socket, i
 }
 
 //Allocazione di una nuova stanza
-stanza *new_stanza(int id, char* nome, int maxPlayer, utente *admin)
+stanza *new_stanza(int id, char* nome, int maxPlayer, int _rounds, utente *admin)
 {
 	stanza *nuovo = (stanza*)malloc(sizeof(stanza));
 	nuovo->idStanza = id;
 	strcpy(nuovo->nomeStanza, nome);
 	nuovo->numeroMaxGiocatori = maxPlayer;
-	nuovo->turn = 0;
+	nuovo->rounds = _rounds;
 	nuovo->started = false;
 	nuovo->adminUser = admin;
 	nuovo->players = (utente**)malloc(maxPlayer*(sizeof(utente*)));
@@ -164,7 +164,7 @@ void rm_user_from_last_room(utente *user){
 	}
 }
 
-int add_stanza(char *name, int max_player, utente *admin){
+int add_stanza(char *name, int max_player, int nRound, utente *admin){
 
 	rm_user_from_last_room(admin);
 
@@ -175,7 +175,7 @@ int add_stanza(char *name, int max_player, utente *admin){
 	{
 		if (stanze[i] == NULL)
 		{
-			stanze[i] = new_stanza(i, name, max_player, admin);
+			stanze[i] = new_stanza(i, name, max_player, nRound, admin);
 			id = i;
 			admin->idStanza = id;
 			break;

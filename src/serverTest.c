@@ -46,8 +46,8 @@ void *handle2_client(void *par_) {
         visualizza_stanze();
 
         if ((read(socket, buffer, 2048)) < 1) {
-            printf("Client disconnected.\n");
             rm_user_from_room(utenteLoggato,stanzaAttuale);
+            printf("Client disconnected.\n");
             break;
         }
 
@@ -147,8 +147,9 @@ void *handle2_client(void *par_) {
         else if(strcmp(operation, "createRoom") == 0){
             char* nomeStanza = (char*) json_object_get_string(json_object_object_get(js, "nomeStanza"));
             int numeroMaxGiocatori = (int) json_object_get_int(json_object_object_get(js, "numeroMaxGiocatori"));
+            int numeroRound = (int) json_object_get_int(json_object_object_get(js, "numeroRound"));
 
-            int id = add_stanza(nomeStanza, numeroMaxGiocatori, utenteLoggato);
+            int id = add_stanza(nomeStanza, numeroMaxGiocatori, numeroRound, utenteLoggato);
             stanzaAttuale = get_stanza_by_id(id);
             printf("stanza creata: %s\n",stanzaAttuale->nomeStanza);
             json_object_object_add(json, "id", json_object_new_int(id));
@@ -178,7 +179,7 @@ void *handle2_client(void *par_) {
                 //wait_until_ready(currentRoom,utenteLoggato);
                 //currentRoom->tmp = true;
                 currentRoom->started = true;
-                email = start_room(get_stanza_by_id(utenteLoggato->idStanza), 2);
+                email = start_room(get_stanza_by_id(utenteLoggato->idStanza), currentRoom->rounds);
             }
             //Fine del gioco
             if(email != NULL) {
